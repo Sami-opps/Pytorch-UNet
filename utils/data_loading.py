@@ -14,13 +14,13 @@ from tqdm import tqdm
 
 
 def load_image(filename):
-    ext = splitext(filename)[1]
-    if ext == '.npy':
-        return Image.fromarray(np.load(filename))
-    elif ext in ['.pt', '.pth']:
-        return Image.fromarray(torch.load(filename).numpy())
-    else:
-        return Image.open(filename)
+    # ext = splitext(filename)[1]
+    # if ext == '.npy':
+    #     return Image.fromarray(np.load(filename))
+    # elif ext in ['.pt', '.pth']:
+    #     return Image.fromarray(torch.load(filename).numpy())
+    # else:
+    return Image.open(filename)
 
 
 def unique_mask_values(idx, mask_dir, mask_suffix):
@@ -42,17 +42,19 @@ class BasicDataset(Dataset):
         assert 0 < scale <= 1, 'Scale must be between 0 and 1'
         self.scale = scale
         self.mask_suffix = mask_suffix
-
         self.ids = [splitext(file)[0] for file in listdir(images_dir) if isfile(join(images_dir, file)) and not file.startswith('.')]
+        self.ids2 = [splitext(file)[0] for file in listdir(mask_dir) if isfile(join(mask_dir, file)) and not file.startswith('.')]
         if not self.ids:
             raise RuntimeError(f'No input file found in {images_dir}, make sure you put your images there')
+        #Check one
+        #print(len(self.ids))
 
         logging.info(f'Creating dataset with {len(self.ids)} examples')
         logging.info('Scanning mask files to determine unique values')
         with Pool() as p:
             unique = list(tqdm(
-                p.imap(partial(unique_mask_values, mask_dir=self.mask_dir, mask_suffix=self.mask_suffix), self.ids),
-                total=len(self.ids)
+                p.imap(partial(unique_mask_values, mask_dir=self.mask_dir, mask_suffix=self.mask_suffix), self.ids2),
+                total=len(self.ids2)
             ))
 
         self.mask_values = list(sorted(np.unique(np.concatenate(unique), axis=0).tolist()))
@@ -68,6 +70,7 @@ class BasicDataset(Dataset):
         assert newW > 0 and newH > 0, 'Scale is too small, resized images would have no pixel'
         pil_img = pil_img.resize((newW, newH), resample=Image.NEAREST if is_mask else Image.BICUBIC)
         img = np.asarray(pil_img)
+
 
         if is_mask:
             mask = np.zeros((newH, newW), dtype=np.int64)
@@ -96,7 +99,7 @@ class BasicDataset(Dataset):
         img_file = list(self.images_dir.glob(name + '.*'))
 
         assert len(img_file) == 1, f'Either no image or multiple images found for the ID {name}: {img_file}'
-        assert len(mask_file) == 1, f'Either no mask or multiple masks found for the ID {name}: {mask_file}'
+        #assert len(mask_file) == 1, f'Either no mask or multiple masks found for the ID {name}: {mask_file}'
         mask = load_image(mask_file[0])
         img = load_image(img_file[0])
 
