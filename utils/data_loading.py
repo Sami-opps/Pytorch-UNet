@@ -11,6 +11,7 @@ from os.path import splitext, isfile, join
 from pathlib import Path
 from torch.utils.data import Dataset
 from tqdm import tqdm
+import torchvision.transforms.functional as TF
 
 
 def load_image(filename):
@@ -39,7 +40,10 @@ class BasicDataset(Dataset):
     def __init__(self, images_dir: str, mask_dir: str, scale: float = 1.0, mask_suffix: str = ''):
         self.images_dir = Path(images_dir)
         self.mask_dir = Path(mask_dir)
-        assert 0 < scale <= 1, 'Scale must be between 0 and 1'
+        if isinstance(scale, tuple):
+            assert (0 < s <= 1 for s in scale), 'Scale must be between 0 and 1'
+        else:
+            assert (0 < scale <=1), 'Scale must be between 0 and 1'
         self.scale = scale
         self.mask_suffix = mask_suffix
         self.ids = [splitext(file)[0] for file in listdir(images_dir) if isfile(join(images_dir, file)) and not file.startswith('.')]
@@ -57,7 +61,8 @@ class BasicDataset(Dataset):
                 total=len(self.ids2)
             ))
 
-        self.mask_values = list(sorted(np.unique(np.concatenate(unique), axis=0).tolist()))
+        #self.mask_values = list(sorted(np.unique(np.concatenate(unique), axis=0).tolist()))
+        self.mask_values = [0, 1]
         logging.info(f'Unique mask values: {self.mask_values}')
 
     def __len__(self):
@@ -95,13 +100,22 @@ class BasicDataset(Dataset):
 
     def __getitem__(self, idx):
         name = self.ids[idx]
-        mask_file = list(self.mask_dir.glob(name + self.mask_suffix + '.*'))
+        name_mask = self.ids2[idx]
+        mask_file = list(self.mask_dir.glob(name_mask + self.mask_suffix + '.*'))
         img_file = list(self.images_dir.glob(name + '.*'))
-
+        self.img_size = 224
         assert len(img_file) == 1, f'Either no image or multiple images found for the ID {name}: {img_file}'
         #assert len(mask_file) == 1, f'Either no mask or multiple masks found for the ID {name}: {mask_file}'
-        mask = load_image(mask_file[0])
+
         img = load_image(img_file[0])
+        #if len(mask_file) == 0: print("mask file Not loading")
+        mask = load_image(mask_file[0])
+
+        # img = np.array(self.resize(img, resize_to=224), np.float32)
+        # mask = np.array(self.resize(mask, resize_to=224), np.uint8)
+        mask = TF.resize(mask, img.size, interpolation=Image.BICUBIC)
+        if mask.size != img.size[::-1]:
+            mask = mask.transpose(Image.TRANSPOSE)
 
         assert img.size == mask.size, \
             f'Image and mask {name} should be the same size, but are {img.size} and {mask.size}'
@@ -114,7 +128,22 @@ class BasicDataset(Dataset):
             'mask': torch.as_tensor(mask.copy()).long().contiguous()
         }
 
+        # def resize(self, img, resize_to):
+        #     w, h = img.size
+        #     scale = max(w, h) / resize_to
+        #     if w > h:
+        #         h = int(h // scale)
+        #         img = img.resize((224, h))
+        #     elif w == h:
+        #         img = img.resize((224, 224))
+        #     else:
+        #         w = int(w // scale)
+        #
+        #         img = img.resize((w, 224))
+        #     return img
+
 
 class CBIS_DDSM(BasicDataset):
     def __init__(self, images_dir, mask_dir, scale=1):
-        super().__init__(images_dir, mask_dir, scale, mask_suffix='_mask')
+        super().__init__(images_dir, mask_dir, scale, mask_suffix='')
+
