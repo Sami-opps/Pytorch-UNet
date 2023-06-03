@@ -114,8 +114,9 @@ class BasicDataset(Dataset):
         # img = np.array(self.resize(img, resize_to=224), np.float32)
         # mask = np.array(self.resize(mask, resize_to=224), np.uint8)
         mask = TF.resize(mask, img.size, interpolation=Image.BICUBIC)
-        if mask.size != img.size[::-1]:
-            mask = mask.transpose(Image.TRANSPOSE)
+
+        mask = mask.transpose(Image.TRANSPOSE)
+        # print(img.size, mask.size)
 
         assert img.size == mask.size, \
             f'Image and mask {name} should be the same size, but are {img.size} and {mask.size}'
