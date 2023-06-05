@@ -37,7 +37,7 @@ class Dataset(Dataset):
         #         self.img_paths.append(os.path.join(imgs_root, img))
 
         for img in img_files:
-            mask_name = img[:-3] + '.jpg'
+            mask_name = img[:-3] + 'jpg'
             mask_path = os.path.join(masks_root, mask_name)
             if os.path.exists(mask_path):
                 self.img_paths.append(os.path.join(imgs_root, img))

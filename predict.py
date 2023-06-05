@@ -60,10 +60,12 @@ def get_output_filenames(args):
 
 
 def mask_to_image(mask: np.ndarray, mask_values):
-    if isinstance(mask_values[0], list):
-        out = np.zeros((mask.shape[-2], mask.shape[-1], len(mask_values[0])), dtype=np.uint8)
-    elif mask_values == [0, 1]:
+    mask_values = [0, 1]
+    if mask_values == [0, 1]:
         out = np.zeros((mask.shape[-2], mask.shape[-1]), dtype=bool)
+    elif len(mask_values) >= 2 and isinstance(mask_values[0], list):
+        out = np.zeros((mask.shape[-2], mask.shape[-1], len(mask_values[0])), dtype=np.uint8)
+    
     else:
         out = np.zeros((mask.shape[-2], mask.shape[-1]), dtype=np.uint8)
 
