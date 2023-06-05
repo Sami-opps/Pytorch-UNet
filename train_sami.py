@@ -24,7 +24,7 @@ from utils.gelo_pipe_line import Dataset
 # dir_img = Path('data/imgs/')
 # dir_mask = Path('data/masks/')
 
-ds_dir = Path("./data/mt")    # mt - [images(jpg files), masks(png files)]
+ds_dir = Path("./data/")    # mt - [images(jpg files), masks(png files)]
 dir_checkpoint = Path('./checkpoints/')
 
 
@@ -196,7 +196,7 @@ def get_args():
     parser.add_argument('--batch-size', '-b', dest='batch_size', metavar='B', type=int, default=8, help='Batch size')
     parser.add_argument('--learning-rate', '-l', metavar='LR', type=float, default=1e-4,
                         help='Learning rate', dest='lr')
-    parser.add_argument('--load', '-f', type=str, default=False, help='Load model from a .pth file')
+    parser.add_argument('--load', '-f', type=str, default=True, help='Load model from a .pth file')
     parser.add_argument('--scale', '-s', type=float, default=0.5, help='Downscaling factor of the images')
     parser.add_argument('--validation', '-v', dest='val', type=float, default=10.0,
                         help='Percent of the data that is used as validation (0-100)')

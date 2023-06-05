@@ -21,23 +21,23 @@ class Dataset(Dataset):
         self.classes = classes 
         self.transforms = transforms
         
-        if isinstance(img_size, Union[Tuple, List]):
+        if isinstance(img_size, (Tuple, List)):
             assert img_size[0] == img_size[1], 'Only supports equal size of image' 
             self.img_size = img_size[0]
         
-        imgs_root = os.path.join(root, 'images')
+        imgs_root = os.path.join(root, 'imgs')
         masks_root = os.path.join(root, 'masks')
         img_files = os.listdir(imgs_root)
         self.img_paths = []
         self.mask_paths = []
         not_found = []
         
-        # for img in img_files:
+        # for img in img_files: mask_1_1-263_copy1 mask_1_2-241_copy2
         #     if os.path.exists(imgs_root):
         #         self.img_paths.append(os.path.join(imgs_root, img))
 
         for img in img_files:
-            mask_name = img[:-3] + 'png'
+            mask_name = img[:-3] + '.jpg'
             mask_path = os.path.join(masks_root, mask_name)
             if os.path.exists(mask_path):
                 self.img_paths.append(os.path.join(imgs_root, img))
