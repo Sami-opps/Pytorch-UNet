@@ -21,6 +21,7 @@ from utils.dice_score import dice_loss
 from utils.gelo_pipe_line import Dataset
 
 
+
 # dir_img = Path('data/imgs/')
 # dir_mask = Path('data/masks/')
 
@@ -225,12 +226,18 @@ if __name__ == '__main__':
                  f'\t{model.n_classes} output channels (classes)\n'
                  f'\t{"Bilinear" if model.bilinear else "Transposed conv"} upscaling')
 
+    model_path = "C:\\Users\\samue\\Downloads\\Senior_Project\\Pytorch-UNet\\checkpoints\\checkpoint_epoch50.pth"
     if args.load:
-        state_dict = torch.load(args.load, map_location=device)
-        del state_dict['mask_values']
-        model.load_state_dict(state_dict)
-        logging.info(f'Model loaded from {args.load}')
-
+        
+        try:
+            state_dict = torch.load(model_path, map_location=device)
+            del state_dict['mask_values']
+            model.load_state_dict(state_dict)
+            logging.info(f'Model loaded from {model_path}')
+        except Exception as e:
+            logging.error(f"failed to load from {model_path}: {e}")
+    else:
+        logging.error(f"Invalid path: {model_path}")
     model.to(device=device)
     try:
         train_model(
