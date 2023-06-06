@@ -94,8 +94,8 @@ class Dataset(Dataset):
             for i in range(self.classes):   
                 one_hot[i] = (mask == i)
             mask = one_hot
-        #self.resize(image, (224,224))
-        #self.resize(mask, (224,224))
+        #self.resize(image, 224)
+        #self.resize(mask, 224)
         image = torch.as_tensor(image, dtype=torch.float32).permute(2, 0, 1)
         mask = torch.as_tensor(mask)
         
