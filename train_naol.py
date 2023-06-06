@@ -1,19 +1,38 @@
+import argparse
+import logging
+import os
+import random
+import sys
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+import torchvision.transforms as transforms
+import torchvision.transforms.functional as TF
+from pathlib import Path
+from torch import optim
+from torch.utils.data import DataLoader, random_split
+from tqdm import tqdm
 
 import wandb
 from evaluate import evaluate
 from unet import UNet
 from utils.data_loading import BasicDataset, CBIS_DDSM
 from utils.dice_score import dice_loss
+from utils.gelo_pipe_line import Dataset
 
-dir_img = Path('data/imgs/')
-dir_mask = Path('data/masks/')
+
+
+# dir_img = Path('data/imgs/')
+# dir_mask = Path('data/masks/')
+
+ds_dir = Path("./data/")    # mt - [images(jpg files), masks(png files)]
 dir_checkpoint = Path('./checkpoints/')
 
 
 def train_model(
         model,
         device,
-        epochs: int = 2,
+        epochs: int = 5,
         batch_size: int = 1,
         learning_rate: float = 1e-5,
         val_percent: float = 0.1,
@@ -25,21 +44,33 @@ def train_model(
         gradient_clipping: float = 1.0,
 ):
     # 1. Create dataset
-    try:
-        dataset = CBIS_DDSM(dir_img, dir_mask, img_scale)
-    except (AssertionError, RuntimeError, IndexError):
-        dataset = BasicDataset(dir_img, dir_mask, img_scale)
+    # try:
+    #     dataset = CBIS_DDSM(dir_img, dir_mask, img_scale)
+    # except (AssertionError, RuntimeError, IndexError):
+    #     dataset = BasicDataset(dir_img, dir_mask, img_scale)
 
     # 2. Split into train / validation partitions
-    n_val = int(len(dataset) * val_percent)
-    n_train = len(dataset) - n_val
-    train_set, val_set = random_split(dataset, [n_train, n_val], generator=torch.Generator().manual_seed(0))
+    # n_val = int(len(dataset) * val_percent)
+    # n_train = len(dataset) - n_val
+    # train_set, val_set = random_split(dataset, [n_train, n_val], generator=torch.Generator().manual_seed(0))
 
     # 3. Create data loaders
-    loader_args = dict(batch_size=batch_size, num_workers=0, pin_memory=True)
-    train_loader = DataLoader(train_set, shuffle=True, **loader_args)
-    val_loader = DataLoader(val_set, shuffle=False, drop_last=True, **loader_args)
+    # loader_args = dict(batch_size=batch_size, num_workers=os.cpu_count(), pin_memory=True)
+    # train_loader = DataLoader(train_set, shuffle=True, **loader_args)
+    # val_loader = DataLoader(val_set, shuffle=False, drop_last=True, **loader_args)
 
+    tv_split = 1 - val_percent
+    train_ds = Dataset(root=ds_dir, img_size=224, classes=1, mode='train', train_val_split=tv_split)
+    valid_ds = Dataset(root=ds_dir, img_size=224, classes=1, mode='valid', train_val_split=tv_split)
+    n_train, n_val = len(train_ds), len(valid_ds)
+    
+    print('Training_Data: ', len(train_ds))
+    print('Validation_Data: ', len(valid_ds))
+
+    loader_args = dict(batch_size=batch_size, num_workers=os.cpu_count(), pin_memory=True)
+    train_loader = DataLoader(train_ds, shuffle=True, **loader_args)
+    val_loader = DataLoader(valid_ds, shuffle=False, **loader_args)
+    
     # (Initialize logging)
     experiment = wandb.init(project='U-Net', resume='allow', anonymous='must')
     experiment.config.update(
@@ -72,8 +103,11 @@ def train_model(
         model.train()
         epoch_loss = 0
         with tqdm(total=n_train, desc=f'Epoch {epoch}/{epochs}', unit='img') as pbar:
-            for batch in train_loader:
-                images, true_masks = batch['image'], batch['mask']
+            for idx, (images, true_masks) in enumerate(train_loader):
+          
+            # for batch in train_loader:
+                # images, true_masks = batch['image'], batch['mask']
+                # images, true_mask = batch 
 
                 assert images.shape[1] == model.n_channels, \
                     f'Network has been defined with {model.n_channels} input channels, ' \
@@ -82,6 +116,9 @@ def train_model(
 
                 images = images.to(device=device, dtype=torch.float32, memory_format=torch.channels_last)
                 true_masks = true_masks.to(device=device, dtype=torch.long)
+                
+                # Normalize the image. 
+                images = images/255.0
 
                 with torch.autocast(device.type if device.type != 'mps' else 'cpu', enabled=amp):
                     masks_pred = model(images)
@@ -92,13 +129,14 @@ def train_model(
                         loss = criterion(masks_pred, true_masks)
                         loss += dice_loss(
                             F.softmax(masks_pred, dim=1).float(),
-                            F.one_hot(true_masks, model.n_classes).permute(0, 3, 1, 2).float(),
-                            multiclass=True
+                            true_masks.float()
+                            # F.one_hot(true_masks, model.n_classes).permute(0, 3, 1, 2).float(),
+                            # multiclass=True
                         )
 
                 optimizer.zero_grad(set_to_none=True)
                 grad_scaler.scale(loss).backward()
-                torch.nn.utils.clip_grad_norm_(model.parameters(), gradient_clipping)
+                # torch.nn.utils.clip_grad_norm_(model.parameters(), gradient_clipping)
                 grad_scaler.step(optimizer)
                 grad_scaler.update()
 
@@ -135,7 +173,8 @@ def train_model(
                                 'images': wandb.Image(images[0].cpu()),
                                 'masks': {
                                     'true': wandb.Image(true_masks[0].float().cpu()),
-                                    'pred': wandb.Image(masks_pred.argmax(dim=1)[0].float().cpu()),
+                                    'pred': wandb.Image((torch.sigmoid(masks_pred)[0] > 0.5).float().cpu()),
+                                    # 'pred': wandb.Image(masks_pred.argmax(dim=1)[0].float().cpu()),
                                 },
                                 'step': global_step,
                                 'epoch': epoch,
@@ -147,18 +186,18 @@ def train_model(
         if save_checkpoint:
             Path(dir_checkpoint).mkdir(parents=True, exist_ok=True)
             state_dict = model.state_dict()
-            state_dict['mask_values'] = dataset.mask_values
+            state_dict['mask_values'] = '' #dataset.mask_values
             torch.save(state_dict, str(dir_checkpoint / 'checkpoint_epoch{}.pth'.format(epoch)))
             logging.info(f'Checkpoint {epoch} saved!')
 
 
 def get_args():
     parser = argparse.ArgumentParser(description='Train the UNet on images and target masks')
-    parser.add_argument('--epochs', '-e', metavar='E', type=int, default=2, help='Number of epochs')
-    parser.add_argument('--batch-size', '-b', dest='batch_size', metavar='B', type=int, default=1, help='Batch size')
-    parser.add_argument('--learning-rate', '-l', metavar='LR', type=float, default=1e-5,
+    parser.add_argument('--epochs', '-e', metavar='E', type=int, default=50, help='Number of epochs')
+    parser.add_argument('--batch-size', '-b', dest='batch_size', metavar='B', type=int, default=8, help='Batch size')
+    parser.add_argument('--learning-rate', '-l', metavar='LR', type=float, default=1e-4,
                         help='Learning rate', dest='lr')
-    parser.add_argument('--load', '-f', type=str, default=False, help='Load model from a .pth file')
+    parser.add_argument('--load', '-f', type=str, default=True, help='Load model from a .pth file')
     parser.add_argument('--scale', '-s', type=float, default=0.5, help='Downscaling factor of the images')
     parser.add_argument('--validation', '-v', dest='val', type=float, default=10.0,
                         help='Percent of the data that is used as validation (0-100)')
@@ -187,12 +226,18 @@ if __name__ == '__main__':
                  f'\t{model.n_classes} output channels (classes)\n'
                  f'\t{"Bilinear" if model.bilinear else "Transposed conv"} upscaling')
 
+    model_path = "C:\\Users\\samue\\Downloads\\Senior_Project\\Pytorch-UNet\\checkpoints\\checkpoint_epoch50.pth"
     if args.load:
-        state_dict = torch.load(args.load, map_location=device)
-        del state_dict['mask_values']
-        model.load_state_dict(state_dict)
-        logging.info(f'Model loaded from {args.load}')
-
+        
+        try:
+            state_dict = torch.load(model_path, map_location=device)
+            del state_dict['mask_values']
+            model.load_state_dict(state_dict)
+            logging.info(f'Model loaded from {model_path}')
+        except Exception as e:
+            logging.error(f"failed to load from {model_path}: {e}")
+    else:
+        logging.error(f"Invalid path: {model_path}")
     model.to(device=device)
     try:
         train_model(
