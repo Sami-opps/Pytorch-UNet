@@ -157,7 +157,7 @@ def train_model(
                             })
                         except:
                             pass
-p
+
         if save_checkpoint:
             Path(dir_checkpoint).mkdir(parents=True, exist_ok=True)
             state_dict = model.state_dict()
